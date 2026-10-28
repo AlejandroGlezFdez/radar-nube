@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radar de tendencias</title>
+<style>
+:root{--fondo:#f6f7f9;--carta:#fff;--texto:#1d2330;--suave:#667085;--borde:#e3e6eb;--acento:#2f6fde;--ok:#1f8a4c;--aviso:#b26a00;--mal:#c0392b;--chip:#eef2f8;--gente:#f3f0fb}
+@media (prefers-color-scheme:dark){:root{--fondo:#12151b;--carta:#1b2029;--texto:#e6e9ef;--suave:#98a2b3;--borde:#2b3240;--acento:#6c9cff;--ok:#4cc38a;--aviso:#f0a83a;--mal:#ff7a6b;--chip:#252c38;--gente:#231f33}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--texto);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{position:sticky;top:0;z-index:2;background:var(--fondo);border-bottom:1px solid var(--borde);padding:12px 16px 0}
+.fila{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+h1{font-size:18px;margin:0;flex:1}
+#hecho{color:var(--suave);font-size:12px}
+button,select{font:inherit;border:1px solid var(--borde);background:var(--carta);color:var(--texto);border-radius:8px;padding:6px 10px;cursor:pointer}
+button.on{background:var(--acento);border-color:var(--acento);color:#fff}
+.pestanas{display:flex;gap:4px;margin-top:10px;overflow-x:auto}
+.pestanas button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:8px 10px;white-space:nowrap}
+.pestanas button.on{border-bottom-color:var(--acento);color:var(--acento);background:none;font-weight:600}
+main{max-width:860px;margin:0 auto;padding:12px 16px 40px}
+.filtros{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+.carta{background:var(--carta);border:1px solid var(--borde);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.carta.leida{opacity:.55}
+.carta.guardada{border-left:4px solid var(--aviso)}
+.tit{font-weight:650;font-size:16px;margin:0 0 4px}
+.meta{color:var(--suave);font-size:13px}
+.contexto{color:var(--suave);font-size:14px;margin:4px 0}
+.gente{background:var(--gente);border-radius:8px;padding:8px 10px;margin:8px 0 4px;font-size:14px}
+.gente b{display:block;font-size:12px;color:var(--suave);font-weight:600;margin-bottom:2px}
+.chips{display:flex;gap:4px;flex-wrap:wrap;margin:4px 0}
+.chip{background:var(--chip);border-radius:999px;padding:1px 8px;font-size:12px}
+.chip.alta{color:var(--mal)}.chip.media{color:var(--aviso)}.chip.baja{color:var(--suave)}
+details{margin-top:6px;font-size:13px}
+summary{cursor:pointer;color:var(--acento)}
+details li{margin:4px 0}
+details a{color:var(--acento)}
+.acciones{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.vacio{color:var(--suave);text-align:center;padding:30px 0}
+.frase{background:var(--carta);border:1px solid var(--borde);border-radius:12px;padding:10px 14px;margin-bottom:8px;cursor:pointer}
+.frase b{display:block}
+.aviso{background:var(--chip);border-radius:10px;padding:8px 12px;font-size:13px;color:var(--suave);margin-bottom:10px}
+h2{font-size:15px;margin:18px 0 8px;color:var(--suave)}
+.tend{display:flex;gap:10px;align-items:flex-start}
+.tend .num{color:var(--suave);font-weight:600;min-width:22px}
+.carta.oferta{border-left:4px solid var(--ok)}
+.afecta{background:var(--chip);border-radius:8px;padding:6px 10px;margin:6px 0;font-size:14px}
+.fecha{display:inline-block;min-width:54px;text-align:center;background:var(--chip);border-radius:8px;padding:4px 6px;font-weight:650;margin-right:10px;line-height:1.2}
+.fecha small{display:block;font-weight:400;font-size:11px;color:var(--suave)}
+.venta{color:var(--aviso);font-weight:600;font-size:13px}
+.sinver{color:var(--aviso);font-size:12px}
+form.anadir{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 14px}
+form.anadir input{flex:1;min-width:0;font:inherit;border:1px solid var(--borde);background:var(--carta);color:var(--texto);border-radius:8px;padding:6px 10px}
+</style>
+</head>
+<body>
+<header>
+  <div class="fila"><h1>📡 Radar de tendencias</h1><span id="hecho"></span><a id="aRedes" href="redes" style="color:var(--acento);font-size:14px;text-decoration:none">🌐 Redes en directo</a><button id="recoger">Actualizar</button></div>
+  <div class="pestanas" id="pestanas"></div>
+</header>
+<main id="main"><p class="vacio">Cargando…</p></main>
+<script>
+const CAP = window.Capacitor, NATIVO = !!(CAP && CAP.isNativePlatform && CAP.isNativePlatform());
+// Copia en GitHub Pages (nube.py): sirve fuera de casa aunque el PC esté dormido; primero intenta hablar con el PC
+const NUBE = location.hostname.endsWith('github.io');
+const PC = 'https://desktop-ahmae4i.tailc1ba64.ts.net/tendencias', COPIA = 'https://alejandroglezfdez.github.io/radar-nube/datos.enc.json';
+const B = NATIVO || NUBE ? PC : location.pathname.replace(/\/(index\.html)?$/, '');
+document.getElementById('aRedes').href = B + '/redes';
+const guarda = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const lee = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+let D = {temas: [], espana: {}, marcas: {}}, pest = lee('radar-pest', 'resumen'), ocultarLeidas = lee('radar-ocultar', false), dia = '';
+const enlaceClave = location.hash.match(/k=([\w-]+)/);
+if (enlaceClave) { guarda('radar-clave', enlaceClave[1]); history.replaceState(null, '', location.pathname); }
+
+async function conTiempo(url, ms, opciones = {}) {
+  const c = new AbortController(), t = setTimeout(() => c.abort(), ms);
+  try { const r = await fetch(url, {...opciones, cache: 'no-store', signal: c.signal}); if (!r.ok) throw new Error(r.status); return r; } finally { clearTimeout(t); }
+}
+
+async function descifrar(sobre, clave) {
+  const b = s => Uint8Array.from(atob(s), c => c.charCodeAt(0)), enc = new TextEncoder();
+  const base = await crypto.subtle.importKey('raw', enc.encode(clave), 'PBKDF2', false, ['deriveKey']);
+  const k = await crypto.subtle.deriveKey({name: 'PBKDF2', salt: b(sobre.sal), iterations: sobre.vueltas, hash: 'SHA-256'}, base, {name: 'AES-GCM', length: 256}, false, ['decrypt']);
+  return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name: 'AES-GCM', iv: b(sobre.iv)}, k, b(sobre.datos))));
+}
+
+async function subirPendientes() {  // marcas hechas sin PC: se mandan en cuanto vuelve a responder
+  const p = lee('radar-pendientes', {});
+  for (const [id, marca] of Object.entries(p)) {
+    try { await conTiempo(B + '/marca', 5000, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id, marca})}); delete p[id]; } catch (e) { break; }
+  }
+  guarda('radar-pendientes', p);
+}
+
+async function cargar() {
+  try {
+    D = await (await conTiempo(B + '/datos.json', NUBE || NATIVO ? 5000 : 30000)).json(); guarda('radar-datos', D);
+    await subirPendientes();
+  } catch (e) {
+    try {
+      const clave = lee('radar-clave', '');
+      if (!clave) throw new Error('sin clave');
+      D = await descifrar(await (await conTiempo(COPIA, 15000)).json(), clave); D.desdeNube = true; guarda('radar-datos', D);
+    } catch (e2) { D = lee('radar-datos', D); D.sinConexion = true; D.sinClave = !lee('radar-clave', ''); }
+  }
+  D.marcas = {...(D.marcas || {}), ...lee('radar-pendientes', {})};
+  for (const k in D.marcas) if (!D.marcas[k]) delete D.marcas[k];
+  if (dia && !D.desdeNube) { try { const h = await (await fetch(`${B}/historico/${dia}.json`)).json(); h.marcas = D.marcas; h.dias = D.dias; h.recogiendo = D.recogiendo; D = h; } catch (e) {} }
+  pinta();
+}
+
+async function marca(id, valor) {
+  D.marcas[id] = D.marcas[id] === valor ? '' : valor;
+  pinta();
+  const nueva = D.marcas[id] || '';
+  if (!nueva) delete D.marcas[id];
+  try { await conTiempo(B + '/marca', 5000, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id, marca: nueva})}); }
+  catch (e) { const p = lee('radar-pendientes', {}); p[id] = nueva; guarda('radar-pendientes', p); }
+}
+
+// vídeos de TikTok: los baja el PC y se ven sueltos (/ver), sin entrar en TikTok ni en su scroll
+const enlace = u => /tiktok\.com\/.*\/(video|photo)\/\d+|(vm|vt)\.tiktok\.com\//.test(u || '') ? B + '/ver?u=' + encodeURIComponent(u) : u;
+function fuentes(lista) {
+  if (!lista || !lista.length) return '';
+  return `<details><summary>Fuentes (${lista.length}), por si quieres ampliar</summary><ul>${lista.map(f =>
+    `<li><a href="${esc(enlace(f.url))}" target="_blank" rel="noopener">${esc(f.titulo || f.url)}</a><br><span class="meta">${esc([f.red, f.donde || f.medio, f.fecha, f.interaccion].filter(Boolean).join(' · '))}</span></li>`).join('')}</ul></details>`;
+}
+
+function botones(id) {
+  const m = D.marcas[id];
+  // 👎 enseña al radar qué no te interesa: ese tema baja en el resumen y el meta-análisis lo tiene en cuenta
+  return `<div class="acciones"><button class="${m === 'leida' ? 'on' : ''}" onclick="marca('${id}','leida')">✓ Leída</button><button class="${m === 'guardada' ? 'on' : ''}" onclick="marca('${id}','guardada')">☆ Guardar</button><button class="${m === 'nointeresa' ? 'on' : ''}" onclick="marca('${id}','nointeresa')" title="No me interesa">👎</button></div>`;
+}
+
+function noticia(n, tema) {
+  const m = D.marcas[n.id] || '';
+  if (ocultarLeidas && (m === 'leida' || m === 'nointeresa') && pest !== 'guardadas') return '';
+  return `<div class="carta ${m === 'nointeresa' ? 'leida' : m}">
+    <p class="tit">${esc(n.titulo)}</p>
+    <div class="chips">${tema ? `<span class="chip">${esc(tema.emoji + ' ' + tema.nombre)}</span>` : ''}<span class="chip">${esc(n.tipo || '')}</span><span class="chip ${esc(n.importancia)}">importancia ${esc(n.importancia || '?')}</span></div>
+    ${n.contexto ? `<p class="contexto">${esc(n.contexto)}</p>` : ''}
+    <p>${esc(n.que_pasa)}</p>
+    ${n.que_dice_la_gente ? `<div class="gente"><b>💬 Qué dice la gente</b>${esc(n.que_dice_la_gente)}</div>` : ''}
+    ${fuentes(n.fuentes)}${botones(n.id)}</div>`;
+}
+
+function tendencia(t, i) {
+  const m = D.marcas[t.id] || '';
+  if (ocultarLeidas && m === 'leida') return '';
+  const fts = t.red === 'Google' ? (t.noticias || []).map(n => ({...n, red: 'Noticia'})) : [];
+  fts.push({titulo: t.red === 'X' ? 'Ver en X' : 'Buscar en Google', url: t.url, red: t.red});
+  return `<div class="carta ${m}"><div class="tend"><span class="num">${i + 1}</span><div style="flex:1">
+    <p class="tit">${esc(t.nombre)}</p>
+    <div class="chips"><span class="chip">${esc(t.red)}${t.trafico ? ' · ' + esc(t.trafico) + ' búsquedas' : ''}</span><span class="chip">${esc(t.categoria)}</span></div>
+    <p>${esc(t.explicacion || 'Sin explicación todavía.')}</p>${fuentes(fts)}${botones(t.id)}</div></div></div>`;
+}
+
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const hoyISO = () => new Date().toISOString().slice(0, 10);
+const diaCorto = f => f ? `${+f.slice(8, 10)} ${MESES[+f.slice(5, 7) - 1]}` : '';
+
+function novedad(n) {
+  const m = D.marcas[n.id] || '';
+  if (ocultarLeidas && m === 'leida' && pest !== 'guardadas') return '';
+  const oferta = n.tipo === 'oferta';
+  return `<div class="carta ${m} ${oferta ? 'oferta' : ''}">
+    <p class="tit">${oferta ? '🎁 ' : ''}${esc(n.titulo)}</p>
+    <div class="chips"><span class="chip">${esc(n.herramienta)}</span><span class="chip">${esc(n.tipo || 'novedad')}</span><span class="chip ${esc(n.importancia)}">importancia ${esc(n.importancia || '?')}</span><span class="chip">${esc((n.visto || '').replace('T', ' '))}</span></div>
+    <p>${esc(n.explicacion)}</p>
+    ${n.te_afecta ? `<div class="afecta">👉 ${esc(n.te_afecta)}</div>` : ''}
+    ${fuentes([{titulo: n.fuente_nombre, url: n.url, red: 'Fuente oficial'}])}${botones(n.id)}</div>`;
+}
+
+function evento(e) {
+  const af = ((D.agenda || {}).aficiones || []).find(a => a.id === e.aficion) || {};
+  const venta = e.venta && e.venta >= hoyISO() ? `<div class="venta">🎟️ Entradas a la venta el ${diaCorto(e.venta)}${e.venta_hora ? ' a las ' + esc(e.venta_hora) : ''}</div>` : '';
+  const aviso = e.manual ? '<span class="chip">✓ comprobado</span>' : e.enlace_ok === false ? '<span class="sinver">⚠ el enlace no responde: compruébalo antes de fiarte</span>' : '';
+  return `<div class="carta ${D.marcas[e.id] || ''}"><div class="tend"><span class="fecha">${diaCorto(e.fecha)}<small>${e.fecha_fin && e.fecha_fin !== e.fecha ? 'al ' + diaCorto(e.fecha_fin) : e.fecha.slice(0, 4)}</small></span><div style="flex:1">
+    <p class="tit">${esc(e.nombre)}</p>
+    <div class="chips"><span class="chip">${esc((af.emoji || '') + ' ' + (af.nombre || e.aficion))}</span><span class="chip">${esc(e.tipo)}</span>${e.precio ? `<span class="chip">${esc(e.precio)}</span>` : ''}${e.cerca === false ? '<span class="chip">✈️ fuera de Cataluña</span>' : ''}${aviso}</div>
+    <p class="meta">📍 ${esc([...new Set([e.lugar, e.ciudad])].filter(x => x && x !== '-').join(', '))}</p>${venta}
+    <p>${esc(e.detalle)}</p>
+    ${e.url ? fuentes([{titulo: 'Más información y entradas', url: e.url}]) : ''}${botones(e.id)}</div></div></div>`;
+}
+
+function comunidad(c) {
+  return `<div class="carta"><p class="tit">💬 ${esc(c.nombre)}</p><div class="chips"><span class="chip">${esc(c.plataforma)}</span>${c.manual ? '<span class="chip">✓ comprobado</span>' : c.enlace_ok === false ? '<span class="sinver">⚠ el enlace no responde</span>' : ''}</div>
+    <p>${esc(c.detalle)}</p>${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener" style="color:var(--acento)">Entrar</a>` : ''}</div>`;
+}
+
+// 💡 Ideas: las marcas de siempre (estado.json) con cuatro destinos; cada filtro es una bandeja
+const DESTINOS = [['guardada', '💾 Me la guardo'], ['aplicar', '🛠️ La aplico'], ['aprendida', '📖 Aprendido'], ['nointeresa', '✕ Descartar']];
+const BANDEJAS = [['claude', '⭐ Te recomiendo'], ['nuevas', '🆕 Sin decidir'], ['aplicar', '🛠️ Para aplicar'], ['guardada', '💾 Guardadas'], ['aprendida', '📖 Aprendidas'], ['nointeresa', '✕ Descartadas'], ['todas', 'Todas']];
+let bandeja = lee('radar-bandeja', 'claude'), ordenIdeas = lee('radar-orden-ideas', 'encaje');
+const FICHAS = {};
+// 📋 Encargo para otra IA: la idea + el manual, para pegarlo en Gemini CLI, Codex, OpenCode… cuando se acabe el cupo
+function encargo(id) {
+  const i = FICHAS[id], man = (D.ideas || {}).manual || 'C:\\Users\\Alejandro\\apps-android\\MANUAL-HACER-UNA-APP.md';
+  const t = [
+    `Quiero que hagas este proyecto para mí. Antes de nada, lee entero el manual ${man} y sigue sus reglas (sección 0) y sus pasos.`, '',
+    `IDEA: ${i.titulo}`, `Tipo: ${i.tipo}`, `Encaja en: ${i.encaja || 'Proyecto nuevo'}`, '',
+    `Qué es: ${i.que_es}`, `Por qué me sirve: ${i.para_ti || ''}`, `Primer paso: ${i.primer_paso || ''}`, i.ojo ? `Ojo: ${i.ojo}` : '', '',
+    'Si encaja en un proyecto mío que ya existe, búscalo primero en «C:\\Users\\Alejandro\\Mi Espacio Personal\\10 - Programas y Scripts» o en «C:\\Users\\Alejandro\\apps-android» y amplíalo (con copia antes) en vez de empezar de cero.',
+    'Hazlo por fases: primero la web funcionando en el PC, luego en el móvil por Tailscale y, si tiene sentido, el APK. Al acabar, dame un resumen corto de qué hay y dónde.'
+  ].join('\n');
+  const ok = () => { const b = document.getElementById('enc-' + id); if (b) { b.textContent = '✅ Copiado: pégalo en la otra IA'; setTimeout(() => b.textContent = '📋 Encargo para otra IA', 4000); } };
+  if (navigator.clipboard && isSecureContext) navigator.clipboard.writeText(t).then(ok, () => copiaVieja(t, ok)); else copiaVieja(t, ok);
+}
+function copiaVieja(t, ok) {
+  const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select();
+  try { document.execCommand('copy'); ok(); } catch (e) { prompt('Copia este encargo:', t); }
+  a.remove();
+}
+function idea(i) {
+  FICHAS[i.id] = i;
+  const m = D.marcas[i.id] || '', dif = Math.max(0, Math.min(5, +i.dificultad || 0)), enc = Math.max(0, Math.min(5, +i.encaje || 0));
+  return `<div class="carta ${m === 'nointeresa' ? 'leida' : m === 'guardada' || m === 'aplicar' ? 'guardada' : ''}">
+    <p class="tit">${i.prioridad ? `<span style="color:var(--acento)">#${i.prioridad}</span> ` : ''}${i.suya ? '✍️ ' : ''}${esc(i.titulo)}</p>
+    <div class="chips"><span class="chip">${esc(i.tipo)}</span><span class="chip">→ ${esc(i.encaja || 'Proyecto nuevo')}</span>${dif ? `<span class="chip" title="dificultad">${'●'.repeat(dif)}${'○'.repeat(5 - dif)}</span>` : ''}${enc ? `<span class="chip" title="cuánto encaja contigo">${'★'.repeat(enc)}${'☆'.repeat(5 - enc)}</span>` : ''}${i.prioridad ? '<span class="chip">⭐ Recomendada por Claude</span>' : `<span class="chip">${esc((i.origen || []).join(', '))}</span><span class="chip">${diaCorto(i.visto)}</span>`}</div>
+    <p>${esc(i.que_es)}</p>
+    ${i.para_ti ? `<div class="gente"><b>🎯 Por qué a ti</b>${esc(i.para_ti)}</div>` : ''}
+    ${i.primer_paso ? `<p class="contexto">🛠️ Primer paso: ${esc(i.primer_paso)}</p>` : ''}
+    ${i.ojo ? `<p class="contexto">⚠️ ${esc(i.ojo)}</p>` : ''}
+    ${i.por_que ? `<p class="contexto">📌 En este puesto porque: ${esc(i.por_que)}</p>` : ''}
+    ${fuentes(i.fuentes || [])}<div class="acciones">${DESTINOS.map(([v, n]) => `<button class="${m === v ? 'on' : ''}" onclick="marca('${i.id}','${v}')">${n}</button>`).join('')}<button id="enc-${i.id}" onclick="encargo('${i.id}')">📋 Encargo para otra IA</button></div></div>`;
+}
+
+async function anadir(ev, tipo) {
+  ev.preventDefault();
+  const inp = ev.target.querySelector('input'), nombre = inp.value.trim();
+  if (!nombre) return;
+  try { await fetch(B + '/' + tipo, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({nombre})}); inp.value = ''; inp.placeholder = tipo === 'idea' ? 'Apuntada: la ficha sale en un par de minutos (recarga)' : 'Añadido: se está buscando, tarda unos minutos'; } catch (e) { inp.placeholder = 'Sin conexión con el PC'; }
+}
+
+function pinta() {
+  const temas = D.temas || [], esp = D.espana || {};
+  const nov = (D.vigia || {}).novedades || [], ag = D.agenda || {eventos: [], comunidades: [], aficiones: []}, meta = D.meta || {};
+  const interes = D.interes || {}, temasOrden = [...temas].sort((a, b) => (interes[b.id] || 0) - (interes[a.id] || 0));
+  const tabs = [['resumen', '⭐ Resumen'], ['parati', '📱 Para ti'], ['novedades', '🛰️ Novedades'], ['agenda', '🎟️ Agenda'], ['espana', '🇪🇸 España hoy'], ...temasOrden.map(t => [t.id, `${t.emoji} ${t.nombre}`]), ['cultura', '🗣️ Cultura'], ['meta', '🧠 Meta'], ['nichos', '💶 Nichos'], ['ideas', '💡 Ideas'], ['guardadas', '☆ Guardadas']];
+  if (!tabs.some(t => t[0] === pest)) pest = 'resumen';
+  document.getElementById('pestanas').innerHTML = tabs.map(([id, n]) => `<button class="${id === pest ? 'on' : ''}" onclick="pest='${id}';guarda('radar-pest',pest);pinta();scrollTo(0,0)">${esc(n)}</button>`).join('');
+  const rc = D.recogiendo || {};
+  const f = D.publicado || D.generado || '', cuando = f ? `${f.slice(8, 10)}/${f.slice(5, 7)} a las ${f.slice(11, 16)}` : '';
+  document.getElementById('hecho').textContent = D.sinConexion ? 'Sin conexión: lo último guardado en el móvil'
+    : D.desdeNube ? `☁️ PC dormido · copia de ${cuando} (se actualiza sola cada 3 h)`
+    : rc.activo ? `Actualizando: ${rc.paso}…` : (D.generado ? 'Actualizado ' + D.generado.replace('T', ' ') : '');
+  document.getElementById('recoger').disabled = !!rc.activo;
+
+  const dias = (D.dias || []);
+  let h = `<div class="filtros"><label><input type="checkbox" ${ocultarLeidas ? 'checked' : ''} onchange="ocultarLeidas=this.checked;guarda('radar-ocultar',ocultarLeidas);pinta()"> Ocultar leídas</label>
+    ${dias.length > 1 ? `<select onchange="dia=this.value;cargar()"><option value="">Hoy</option>${dias.slice(1).map(x => `<option ${x === dia ? 'selected' : ''}>${x}</option>`).join('')}</select>` : ''}</div>`;
+
+  if (D.sinClave && (NUBE || NATIVO)) h += `<div class="aviso">El PC no responde y este móvil aún no tiene la clave de la copia cifrada. Abre el enlace que te mandé por Telegram o pégala aquí:
+    <form class="anadir" onsubmit="event.preventDefault();guarda('radar-clave',this.querySelector('input').value.trim());cargar()"><input placeholder="clave del radar"><button>Guardar</button></form></div>`;
+  if (pest === 'resumen') {
+    const ofertas = nov.filter(n => (n.tipo === 'oferta' || n.importancia === 'alta') && D.marcas[n.id] !== 'leida').slice(0, 4);
+    if (ofertas.length) h += `<h2>🛰️ Novedades oficiales que te importan</h2>` + ofertas.map(novedad).join('');
+    const limite = new Date(Date.now() + 21 * 864e5).toISOString().slice(0, 10);
+    // lo que pide hacer algo antes (comprar entradas) va primero, por la fecha en que hay que hacerlo
+    const cuando = e => (e.venta && e.venta >= hoyISO() ? e.venta : e.fecha);
+    const pronto = (ag.eventos || []).filter(e => cuando(e) <= limite).sort((a, b) => cuando(a).localeCompare(cuando(b)));
+    if (pronto.length) h += `<h2>🎟️ Próximas tres semanas</h2>` + pronto.map(evento).join('');
+    const top =(esp.x || []).filter(t => t.explicacion && !t.explicacion.startsWith('No está claro')).slice(0, 5);
+    if (top.length) h += `<h2>🇪🇸 Lo más comentado hoy en España</h2>` + top.map(t => `<div class="frase" onclick="pest='espana';pinta()"><b>${esc(t.nombre)}</b>${esc(t.explicacion)}</div>`).join('');
+    const canales = D.canales || [];
+    if (canales.length) h += `<h2>📺 Tus canales esta semana</h2>` + canales.slice(0, 6).map(v => `<div class="carta"><p class="tit">${esc(v.titulo)}</p><div class="chips"><span class="chip">${esc(v.canal)}</span></div><p>${esc(v.resumen)}</p>${v.comentarios ? `<div class="gente"><b>💬 Qué dicen los que comentan</b>${esc(v.comentarios)}</div>` : ''}${fuentes([{titulo: 'Ver el vídeo (solo si de verdad quieres)', url: v.url}])}</div>`).join('');
+    const burbuja = D.burbuja || [];
+    const ideasHoy = ((D.ideas || {}).ideas || []).filter(i => i.visto === hoyISO() && !D.marcas[i.id]);
+    if (ideasHoy.length) h += `<h2>💡 Ideas nuevas para proyectos</h2>` + ideasHoy.slice(0, 2).map(idea).join('') + (ideasHoy.length > 2 ? `<div class="frase" onclick="pest='ideas';bandeja='nuevas';pinta();scrollTo(0,0)"><b>Ver las ${ideasHoy.length} de hoy</b>En la pestaña 💡 Ideas</div>` : '');
+    if (burbuja.length) h += `<h2>🔭 Fuera de tu burbuja</h2><div class="aviso">Sale en varias redes a la vez y no está en tus temas: lo que antes te descubría el algoritmo.</div>` + burbuja.slice(0, 4).map(t => `<div class="carta"><p class="tit">${esc(t.titulo)}</p><p>${esc(t.que_pasa)}</p>${t.por_que_importa ? `<p class="contexto">${esc(t.por_que_importa)}</p>` : ''}</div>`).join('');
+    h += `<h2>Tus temas este mes</h2>` + temasOrden.map(t => `<div class="frase" onclick="pest='${t.id}';pinta();scrollTo(0,0)"><b>${esc(t.emoji + ' ' + t.nombre)}</b>${esc(t.en_una_frase)}</div>`).join('');
+    const alta = temas.flatMap(t => t.noticias.filter(n => n.importancia === 'alta').map(n => [n, t]));
+    if (alta.length) h += `<h2>Lo importante</h2>` + alta.map(([n, t]) => noticia(n, t)).join('');
+    if (D.no_disponibles) h += `<div class="aviso">No disponibles: ${D.no_disponibles.map(r => `<b>${esc(r.red)}</b> (${esc(r.motivo)})`).join(' · ')}</div>`;
+  } else if (pest === 'nichos') {
+    const ni = D.nichos || {}, cs = ni.canales || [];
+    const mil = n => (n || 0).toLocaleString('es-ES');
+    const ver = {probar: '✅ Probar', vigilar: '👀 Vigilar', descartar: '⏭️ Descartar'};
+    h += `<div class="aviso">Tu «NexLev casero»: canales de YouTube de menos de 6 meses que crecen rápido en formatos sin salir a cámara, con su vídeo estrella. Se busca una vez por semana. Un canal que repite varias semanas es la mejor señal. ${ni.generado ? esc(ni.generado.replace('T', ' ')) : ''}</div>`;
+    if (ni.resumen) h += `<div class="carta"><p class="tit">${esc(ni.resumen)}</p></div>`;
+    for (const [titulo, lista] of [['🇪🇸 En español', cs.filter(c => c.idioma === 'es')], ['🌍 En inglés', cs.filter(c => c.idioma !== 'es')]]) {
+      if (!lista.length) continue;
+      h += `<h2>${titulo}</h2>` + lista.map(c => `<div class="carta"><p class="tit">${esc(c.nombre)}</p>
+        <div class="chips"><span class="chip">${esc(c.nicho || '')}</span><span class="chip">${c.dias} días · ${c.videos} vídeos</span><span class="chip">${mil(c.visitas)} visitas (~${mil(c.visitas_dia)}/día)</span><span class="chip">${esc(c.formato)}</span>${c.veredicto ? `<span class="chip">${esc(ver[c.veredicto] || c.veredicto)}</span>` : ''}${c.semanas > 1 ? `<span class="chip">🔁 ${c.semanas} semanas</span>` : ''}</div>
+        <p>⭐ «${esc(c.estrella.titulo)}» · ${mil(c.estrella.visitas)} visitas</p>
+        ${c.gancho ? `<p>🎣 ${esc(c.gancho)}</p>` : ''}${c.por_que_funciona ? `<p class="contexto">${esc(c.por_que_funciona)}</p>` : ''}
+        ${c.como_lo_harias ? `<div class="gente"><b>🛠️ Cómo lo harías tú, gratis</b>${esc(c.como_lo_harias)}</div>` : ''}
+        ${c.riesgo ? `<p class="contexto">⚠️ ${esc(c.riesgo)}</p>` : ''}
+        ${fuentes([{titulo: 'Vídeo estrella', url: c.estrella.url}, {titulo: 'Canal', url: c.url}])}</div>`).join('');
+    }
+    if (!cs.length) h += '<p class="vacio">La primera búsqueda sale con el aviso de la mañana.</p>';
+  } else if (pest === 'ideas') {
+    const id = D.ideas || {}, mias = ((id.claude || {}).ideas || []).slice().sort((a, b) => a.prioridad - b.prioridad), red = id.ideas || [];
+    const todas = [...mias, ...red];
+    const en = (i, b) => b === 'todas' || (b === 'claude' ? !!i.prioridad : b === 'nuevas' ? !i.prioridad && !D.marcas[i.id] : D.marcas[i.id] === b);
+    const cuenta = b => todas.filter(i => en(i, b)).length;
+    h += `<div class="aviso">Ideas que inspiran proyectos, sacadas de tus TikTok y canales, de tu «Para ti», Show HN, GitHub, Product Hunt y, una vez por semana, Reddit, YouTube y lo que circula en TikTok e Instagram. Decide qué hacer con cada una: lo que guardas y aplicas hace que las siguientes se le parezcan; lo que descartas, que salga menos. ${id.generado ? 'Última tanda: ' + esc(id.generado.replace('T', ' ')) : ''}</div>`;
+    h += `<form class="anadir" onsubmit="anadir(event,'idea')"><input placeholder="＋ Apunta una idea tuya o pega un enlace (TikTok, YouTube, web)"><button>Apuntar</button></form>`;
+    if (id.resumen) h += `<div class="carta"><p class="tit">${esc(id.resumen)}</p></div>`;
+    h += `<div class="filtros">${BANDEJAS.map(([b, n]) => `<button class="${b === bandeja ? 'on' : ''}" onclick="bandeja='${b}';guarda('radar-bandeja',bandeja);pinta()">${n} (${cuenta(b)})</button>`).join('')}</div>`;
+    h += `<div class="frase" onclick="window.open(B + '/manual', '_blank')"><b>📘 Manual para hacer una app con otra IA</b>Si te quedas sin cupo: pulsa «📋 Encargo para otra IA» en la idea que te guste y pégalo en Gemini CLI, Codex, OpenCode… El encargo ya le dice que lea este manual (cómo hago las apps, el APK y la conexión por ADB con tu móvil).</div>`;
+    if (bandeja === 'claude') {
+      const c = id.claude || {};
+      h += `<div class="aviso">⭐ Mis recomendaciones, de la más a la menos prioritaria para ti. ${esc(c.criterio || '')} ${c.actualizado ? 'Actualizadas: ' + diaCorto(c.actualizado) : ''}</div>`;
+    } else if (bandeja !== 'todas') {
+      h += `<div class="filtros">Ordenar: ${[['encaje', '★ Lo que más te encaja'], ['fecha', '🕒 Lo más reciente']].map(([o, n]) => `<button class="${o === ordenIdeas ? 'on' : ''}" onclick="ordenIdeas='${o}';guarda('radar-orden-ideas',ordenIdeas);pinta()">${n}</button>`).join('')}</div>`;
+    }
+    let lista = todas.filter(i => en(i, bandeja));
+    if (bandeja !== 'claude' && ordenIdeas === 'encaje') lista = lista.map((i, n) => [i, n]).sort((a, b) => (+b[0].encaje || (b[0].prioridad ? 4 : 0)) - (+a[0].encaje || (a[0].prioridad ? 4 : 0)) || a[1] - b[1]).map(x => x[0]);
+    h += lista.map(idea).join('') || `<p class="vacio">${todas.length ? 'Nada en esta bandeja.' : 'La primera tanda sale con el próximo aviso de la mañana.'}</p>`;
+  } else if (pest === 'parati') {
+    const pt = D.para_ti || {}, vs = pt.videos || [];
+    const modos = {afinidad: 'Canal que sigues', descubrir: 'Descubierto', explorar: '🧭 Exploración'};
+    const merece = {'verlo': '✅ Merece verlo', 'con el resumen basta': '📝 Con el resumen basta', 'saltar': '⏭️ Saltar'};
+    h += `<div class="aviso">Tu «Para ti», pero finito y a la vista: ${vs.length} vídeos al día, la mitad de canales que sigues, un 30 % descubiertos de tus intereses y un 20 % de exploración. Cada uno dice por qué te sale. ${pt.generado ? esc(pt.generado.replace('T', ' ')) : ''}</div>`;
+    h += vs.map(v => `<div class="carta"><p class="tit">${esc(v.titulo)}</p><div class="chips"><span class="chip">${esc(v.canal)}</span><span class="chip">${esc(v.interes_nombre || '')}</span><span class="chip">${esc(modos[v.modo] || v.modo || '')}</span>${v.merece ? `<span class="chip">${esc(merece[v.merece] || v.merece)}</span>` : ''}</div>
+      <p>${esc(v.de_que_va)}</p>${v.que_dicen ? `<div class="gente"><b>💬 Qué dicen los que comentan</b>${esc(v.que_dicen)}</div>` : ''}${v.por_que_te_sale ? `<p class="contexto">Por qué te sale: ${esc(v.por_que_te_sale)}</p>` : ''}${fuentes([{titulo: 'Ver el vídeo (solo si de verdad quieres)', url: v.url}])}</div>`).join('') || '<p class="vacio">El primer «Para ti» sale con el próximo aviso de la mañana.</p>';
+  } else if (pest === 'espana') {
+    h += `<div class="aviso">Tendencias de X en España (trends24) y búsquedas de Google, explicadas con la búsqueda de Google. ${esc((esp.actualizado || '').replace('T', ' '))}</div>`;
+    h += `<h2>En X</h2>` + (esp.x || []).map(tendencia).join('');
+    h += `<h2>En Google</h2>` + (esp.google || []).map(tendencia).join('');
+  } else if (pest === 'novedades') {
+    h += `<div class="aviso">Lo nuevo en las fuentes oficiales de tus herramientas (Claude, Gemini, Copilot, Codex, OpenCode, yt-dlp) y lo que se comenta en Hacker News. Se revisa cada 3 horas; las ofertas y lo importante te llegan al momento por Telegram.</div>`;
+    const herr = [...new Set(nov.map(n => n.herramienta))];
+    for (const x of herr) h += `<h2>${esc(x)}</h2>` + nov.filter(n => n.herramienta === x).map(novedad).join('');
+    if (!nov.length) h += '<p class="vacio">Todavía nada nuevo. La primera revisión solo toma nota de lo que ya había; a partir de ahí, cada novedad aparece aquí.</p>';
+    const mal = ((D.vigia || {}).fuentes || []).filter(f => f.error);
+    if (mal.length) h += `<div class="aviso">Fuentes con problemas: ${mal.map(f => esc(f.fuente + ' (' + f.error + ')')).join(' · ')}</div>`;
+  } else if (pest === 'agenda') {
+    h += `<div class="aviso">Conciertos, quedadas, convenciones y torneos de tus aficiones, y dónde hablar con otros fans. Te aviso por Telegram la víspera y el mismo día de la venta de entradas, una semana antes y la víspera de cada evento. ${ag.actualizado ? 'Búsqueda: ' + esc(ag.actualizado.replace('T', ' ')) : 'La búsqueda automática se hace una vez por semana.'}</div>`;
+    h += `<h2>Eventos</h2>` + ((ag.eventos || []).map(evento).join('') || '<p class="vacio">Sin eventos todavía.</p>');
+    for (const a of ag.aficiones || []) {
+      const cs = (ag.comunidades || []).filter(c => c.aficion === a.id);
+      if (cs.length) h += `<h2>💬 Dónde hablar · ${esc(a.emoji + ' ' + a.nombre)}</h2>` + cs.map(comunidad).join('');
+    }
+    h += `<h2>＋ Añadir una afición</h2><form class="anadir" onsubmit="anadir(event,'aficion')"><input placeholder="p. ej. Hollow Knight, Pokémon, escalada…"><button>Añadir</button></form>`;
+  } else if (pest === 'cultura') {
+    const cu = D.cultura || {};
+    h += `<div class="aviso">Expresiones, memes y trends de estas semanas, para entenderlos cuando te los suelten. Se actualiza una vez por semana. ${cu.generado ? esc(cu.generado.replace('T', ' ')) : ''}</div>`;
+    h += (cu.lista || []).map(c => `<div class="carta"><p class="tit">${esc(c.nombre)}</p><div class="chips"><span class="chip">${esc(c.tono)}</span></div><p>${esc(c.significa)}</p><p class="contexto">De dónde viene: ${esc(c.origen)}</p><div class="gente"><b>Ejemplo</b>«${esc(c.ejemplo)}»</div></div>`).join('') || '<p class="vacio">La primera tanda sale con el próximo aviso de la mañana.</p>';
+    h += fuentes(cu.fuentes);
+  } else if (pest === 'meta') {
+    if (!meta.generado) h += '<p class="vacio">El meta-análisis sale una vez por semana con el aviso de la mañana.</p>';
+    else {
+      h += `<div class="aviso">Meta-análisis de los últimos ${meta.dias} días · ${esc(meta.generado.replace('T', ' '))}</div><div class="carta"><p class="tit">${esc(meta.semana_en_una_frase)}</p></div>`;
+      if ((meta.hilos || []).length) h += `<h2>🧵 Historias que siguen vivas</h2>` + meta.hilos.map(x => `<div class="carta"><p class="tit">${esc(x.titulo)}</p><p>${esc(x.evolucion)}</p></div>`).join('');
+      if ((meta.subiendo || []).length) h += `<h2>📈 Va a más</h2><div class="carta">${meta.subiendo.map(s => `<p>• ${esc(s)}</p>`).join('')}</div>`;
+      if (meta.tus_intereses) h += `<h2>🪞 Lo que de verdad te interesa</h2><div class="carta"><p>${esc(meta.tus_intereses)}</p></div>`;
+      if ((meta.puntos_ciegos || []).length) h += `<h2>🙈 Puntos ciegos</h2><div class="carta">${meta.puntos_ciegos.map(s => `<p>• ${esc(s)}</p>`).join('')}</div>`;
+      if ((meta.sugerencias || []).length) h += `<h2>💡 Sugerencias</h2><div class="carta">${meta.sugerencias.map(s => `<p><span class="chip">${esc(s.tipo)}</span> ${esc(s.texto)}</p>`).join('')}</div>`;
+      if (meta.plan_social) h += `<h2>🎟️ Plan social</h2><div class="carta"><p>${esc(meta.plan_social)}</p></div>`;
+      if ((meta.salud || []).length) h += `<h2>🩺 Salud del radar</h2><div class="aviso">${meta.salud.map(esc).join('<br>')}</div>`;
+    }
+    h += `<h2>＋ Añadir un nicho a «Tus temas»</h2><form class="anadir" onsubmit="anadir(event,'nicho')"><input placeholder="p. ej. ciberseguridad, oposiciones TAI, piano…"><button>Añadir</button></form>`;
+  } else if (pest === 'guardadas') {
+    const g = temas.flatMap(t => t.noticias.filter(n => D.marcas[n.id] === 'guardada').map(n => noticia(n, t)));
+    const ge = [...(esp.x || []), ...(esp.google || [])].filter(t => D.marcas[t.id] === 'guardada').map(tendencia);
+    const gn = nov.filter(n => D.marcas[n.id] === 'guardada').map(novedad);
+    const gv = (ag.eventos || []).filter(e => D.marcas[e.id] === 'guardada').map(evento);
+    const gi = [...(((D.ideas || {}).claude || {}).ideas || []), ...((D.ideas || {}).ideas || [])].filter(i => D.marcas[i.id] === 'guardada' || D.marcas[i.id] === 'aplicar').map(idea);
+    h += [...gv, ...gi, ...gn, ...g, ...ge].join('') || '<p class="vacio">Nada guardado todavía.</p>';
+  } else {
+    const t = temas.find(x => x.id === pest);
+    if (t) {
+      if (pest === 'politica') h += `<div class="aviso">⚖️ Ojo con el sesgo: Reddit (r/spain, r/Catalunya) y los canales de YouTube no representan a la población y suelen inclinarse hacia un lado. Contrasta con prensa de distintas líneas.</div>`;
+      h += `<div class="aviso"><b>En una frase:</b> ${esc(t.en_una_frase)}<br>Leídas ${t.piezas_leidas} piezas de ${esc(Object.keys(t.redes || {}).join(', '))} · últimos 30 días · ${esc((t.actualizado || '').replace('T', ' '))}</div>`;
+      h += t.noticias.map(n => noticia(n)).join('') || '<p class="vacio">Sin noticias.</p>';
+    }
+  }
+  document.getElementById('main').innerHTML = h;
+}
+
+document.getElementById('recoger').onclick = async () => {
+  try { await conTiempo(B + '/recoger', 5000, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'}); }
+  catch (e) {  // sin PC no se puede recoger: al menos se trae la última copia
+    document.getElementById('hecho').textContent = 'El PC no responde: traigo la última copia…';
+  }
+  setTimeout(cargar, 1500);
+};
+cargar();
+setInterval(() => { if ((D.recogiendo || {}).activo) cargar(); }, 15000);
+</script>
+</body>
+</html>
